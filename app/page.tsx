@@ -24,135 +24,150 @@ type MyVoice = {
 export default function Home() {
   const [text, setText] = useState("");
 
-  const [voices, setVoices] =
-    useState<Voice[]>([]);
+  const [voices, setVoices] = useState<Voice[]>([]);
 
-  const [myVoices, setMyVoices] =
-    useState<MyVoice[]>([]);
+  const [myVoices, setMyVoices] = useState<MyVoice[]>([]);
 
-  const [selectedVoice, setSelectedVoice] =
-    useState("");
+  const [selectedVoice, setSelectedVoice] = useState("");
 
-  const [loadingVoices, setLoadingVoices] =
-    useState(true);
+  const [loadingVoices, setLoadingVoices] = useState(true);
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [cloning, setCloning] =
-    useState(false);
+  const [cloning, setCloning] = useState(false);
 
-  const [audioUrl, setAudioUrl] =
-    useState("");
+  const [audioUrl, setAudioUrl] = useState("");
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
 
-  const [showCloner, setShowCloner] =
-    useState(false);
+  const [showCloner, setShowCloner] = useState(false);
 
-  const [voiceName, setVoiceName] =
-    useState("");
+  const [voiceName, setVoiceName] = useState("");
 
-  const [voiceFile, setVoiceFile] =
-    useState<File | null>(null);
+  const [voiceFile, setVoiceFile] = useState<File | null>(null);
 
-
-  /* LOAD SAVED CLONED VOICES */
+  /*
+   * LOAD SAVED VOICES
+   */
 
   useEffect(() => {
     try {
-      const saved =
-        localStorage.getItem(
-          "gchat_my_voices"
-        );
+      const saved = localStorage.getItem("gchat_my_voices");
 
       if (saved) {
-        const parsed =
-          JSON.parse(saved);
+        const parsed = JSON.parse(saved);
 
-        setMyVoices(parsed);
+        if (Array.isArray(parsed)) {
+          setMyVoices(parsed);
+        }
       }
-    } catch {
-      console.log(
-        "Unable to load saved voices."
-      );
+    } catch (error) {
+      console.error("Unable to load saved voices:", error);
     }
   }, []);
 
-
-  /* LOAD FISH VOICES */
+  /*
+   * LOAD FISH AUDIO VOICES
+   */
 
   useEffect(() => {
     loadVoices();
   }, []);
 
-
   async function loadVoices() {
     try {
       setLoadingVoices(true);
+      setError("");
 
-      const response =
-        await fetch(
-          "/api/voices?page_size=20&page_number=1"
-        );
+      const response = await fetch(
+        "/api/voices?page_size=20&page_number=1"
+      );
+
+      const responseText = await response.text();
+
+      let data: any;
+
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = {};
+      }
 
       if (!response.ok) {
         throw new Error(
-          "Unable to load voices."
+          data.error ||
+            `Unable to load voices (${response.status}).`
         );
       }
 
-      const data =
-        await response.json();
-
-      const items =
-        Array.isArray(data.items)
-          ? data.items
-          : [];
+      const items = Array.isArray(data.items)
+        ? data.items
+        : [];
 
       setVoices(items);
 
-      if (
-        items.length > 0 &&
-        !selectedVoice
-      ) {
-        setSelectedVoice(
-          items[0]._id
-        );
+      if (items.length > 0 && !selectedVoice) {
+        setSelectedVoice(items[0]._id);
       }
-
-    } catch (err) {
+    } catch (error) {
+      console.error("VOICE LOAD ERROR:", error);
 
       setError(
-        err instanceof Error
-          ? err.message
+        error instanceof Error
+          ? error.message
           : "Unable to load voices."
       );
-
     } finally {
-
       setLoadingVoices(false);
-
     }
   }
 
+  /*
+   * SELECT AUDIO FILE
+   */
 
-  /* CLONE VOICE */
+  function handleVoiceFile(
+    file: File | undefined
+  ) {
+    if (!file) {
+      return;
+    }
+
+    setError("");
+
+    if (!file.type.startsWith("audio/")) {
+      setError(
+        "Please select an audio file."
+      );
+
+      return;
+    }
+
+    if (file.size === 0) {
+      setError(
+        "The selected audio file is empty."
+      );
+
+      return;
+    }
+
+    setVoiceFile(file);
+  }
+
+  /*
+   * CLONE VOICE
+   */
 
   async function cloneVoice() {
-
     if (!voiceFile) {
-
       setError(
-        "Please select a voice recording."
+        "Please select or record a voice sample first."
       );
 
       return;
     }
 
     if (!voiceName.trim()) {
-
       setError(
         "Please enter a name for the voice."
       );
@@ -164,42 +179,59 @@ export default function Home() {
     setError("");
 
     try {
-
-      const formData =
-        new FormData();
+      const formData = new FormData();
 
       formData.append(
         "audio",
-        voiceFile
+        voiceFile,
+        voiceFile.name
       );
 
       formData.append(
         "title",
-        voiceName
+        voiceName.trim()
       );
 
-      const response =
-        await fetch(
-          "/api/voices/clone",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
+      const response = await fetch(
+        "/api/voices/clone",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
-      const data =
-        await response.json();
+      const responseText =
+        await response.text();
 
-      if (!response.ok) {
+      let data: any;
 
-        throw new Error(
-          data.error ||
-            "Voice cloning failed."
-        );
-
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = {
+          error:
+            responseText ||
+            "Server returned an invalid response.",
+        };
       }
 
-      const newVoice =
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            `Voice cloning failed (${response.status}).`
+        );
+      }
+
+      if (
+        !data.voice ||
+        !data.voice.id
+      ) {
+        throw new Error(
+          "Fish Audio did not return a voice ID."
+        );
+      }
+
+      const newVoice: MyVoice =
         data.voice;
 
       const updatedVoices = [
@@ -207,9 +239,7 @@ export default function Home() {
         ...myVoices,
       ];
 
-      setMyVoices(
-        updatedVoices
-      );
+      setMyVoices(updatedVoices);
 
       localStorage.setItem(
         "gchat_my_voices",
@@ -223,59 +253,58 @@ export default function Home() {
       );
 
       setVoiceFile(null);
+
       setVoiceName("");
 
       setShowCloner(false);
 
-    } catch (err) {
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Voice cloning failed."
+    } catch (error) {
+      console.error(
+        "VOICE CLONE ERROR:",
+        error
       );
 
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Voice cloning failed."
+      );
     } finally {
-
       setCloning(false);
-
     }
   }
 
-
-  /* DELETE LOCAL VOICE */
+  /*
+   * DELETE LOCAL VOICE
+   */
 
   function deleteVoice(id: string) {
-
-    const updated =
+    const updatedVoices =
       myVoices.filter(
         (voice) =>
           voice.id !== id
       );
 
-    setMyVoices(updated);
+    setMyVoices(updatedVoices);
 
     localStorage.setItem(
       "gchat_my_voices",
       JSON.stringify(
-        updated
+        updatedVoices
       )
     );
 
-    if (
-      selectedVoice === id
-    ) {
+    if (selectedVoice === id) {
       setSelectedVoice("");
     }
   }
 
-
-  /* GENERATE SPEECH */
+  /*
+   * GENERATE VOICE
+   */
 
   async function generateVoice() {
-
     if (!text.trim()) {
-
       setError(
         "Please enter some text first."
       );
@@ -284,7 +313,6 @@ export default function Home() {
     }
 
     if (!selectedVoice) {
-
       setError(
         "Please select a voice."
       );
@@ -293,71 +321,91 @@ export default function Home() {
     }
 
     setLoading(true);
+
     setError("");
+
     setAudioUrl("");
 
     try {
+      const response = await fetch(
+        "/api/tts",
+        {
+          method: "POST",
 
-      const response =
-        await fetch(
-          "/api/tts",
-          {
-            method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              text,
-              reference_id:
-                selectedVoice,
-            }),
-          }
-        );
+          body: JSON.stringify({
+            text: text.trim(),
+            reference_id:
+              selectedVoice,
+          }),
+        }
+      );
 
       if (!response.ok) {
+        const responseText =
+          await response.text();
 
-        const data =
-          await response.json();
+        let data: any;
+
+        try {
+          data =
+            JSON.parse(
+              responseText
+            );
+        } catch {
+          data = {};
+        }
 
         throw new Error(
           data.error ||
-            "Voice generation failed."
+            responseText ||
+            `Voice generation failed (${response.status}).`
         );
-
       }
 
       const blob =
         await response.blob();
 
-      const url =
-        URL.createObjectURL(
-          blob
+      if (blob.size === 0) {
+        throw new Error(
+          "Fish Audio returned an empty audio file."
         );
+      }
+
+      const url =
+        URL.createObjectURL(blob);
 
       setAudioUrl(url);
-
-    } catch (err) {
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong."
+    } catch (error) {
+      console.error(
+        "TTS ERROR:",
+        error
       );
 
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Voice generation failed."
+      );
     } finally {
-
       setLoading(false);
-
     }
   }
 
+  /*
+   * CLEAR ERROR
+   */
+
+  function clearError() {
+    setError("");
+  }
 
   return (
     <main className="min-h-screen bg-[#08050d] text-white">
-
 
       {/* HEADER */}
 
@@ -389,7 +437,10 @@ export default function Home() {
 
           </div>
 
-          <button className="rounded-xl border border-white/20 px-4 py-2 text-sm">
+          <button
+            type="button"
+            className="rounded-xl border border-white/20 px-4 py-2 text-sm"
+          >
             Menu
           </button>
 
@@ -424,16 +475,60 @@ export default function Home() {
 
           </h2>
 
+          <p className="mt-5 max-w-2xl text-white/50">
+
+            Turn text into realistic speech,
+            clone voices and create professional
+            audio for your content.
+
+          </p>
+
         </div>
 
       </section>
 
 
-      {/* CLONER */}
+      {/* GLOBAL ERROR */}
+
+      {error && (
+
+        <section className="mx-auto max-w-7xl px-5">
+
+          <div className="mb-5 flex items-start justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+
+            <div>
+
+              <p className="font-bold text-red-400">
+                Something went wrong
+              </p>
+
+              <p className="mt-1 break-words text-sm text-red-200">
+                {error}
+              </p>
+
+            </div>
+
+            <button
+              type="button"
+              onClick={clearError}
+              className="text-lg text-red-300"
+            >
+              ×
+            </button>
+
+          </div>
+
+        </section>
+
+      )}
+
+
+      {/* VOICE CLONER */}
 
       <section className="mx-auto max-w-7xl px-5 pb-6">
 
         <button
+          type="button"
           onClick={() =>
             setShowCloner(
               !showCloner
@@ -457,10 +552,12 @@ export default function Home() {
 
             </div>
 
-            <span className="text-xl">
+            <span className="text-2xl">
+
               {showCloner
                 ? "−"
                 : "+"}
+
             </span>
 
           </div>
@@ -477,42 +574,63 @@ export default function Home() {
             </h3>
 
             <p className="mt-2 text-sm leading-6 text-white/40">
-              Upload a clear recording of the
-              voice you want to clone.
+
+              Upload a clear voice recording.
+              A clean recording produces better
+              results.
+
             </p>
 
 
-            {/* NAME */}
+            {/* VOICE NAME */}
 
-            <input
-              value={voiceName}
-              onChange={(e) =>
-                setVoiceName(
-                  e.target.value
-                )
-              }
-              placeholder="Voice name"
-              className="mt-5 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none focus:border-purple-500"
-            />
+            <label className="mt-5 block">
+
+              <span className="mb-2 block text-sm font-bold">
+                Voice Name
+              </span>
+
+              <input
+                value={voiceName}
+                onChange={(e) =>
+                  setVoiceName(
+                    e.target.value
+                  )
+                }
+                placeholder="Example: My Creator Voice"
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/20 focus:border-purple-500"
+              />
+
+            </label>
 
 
-            {/* FILE */}
+            {/* AUDIO UPLOAD */}
 
             <label className="mt-4 block cursor-pointer rounded-2xl border border-dashed border-white/20 bg-black/20 p-8 text-center transition hover:border-purple-500">
 
-              <div className="text-3xl">
+              <div className="text-4xl">
                 🎙️
               </div>
 
               <p className="mt-3 font-bold">
+
                 {voiceFile
                   ? voiceFile.name
-                  : "Upload voice recording"}
+                  : "Select your voice recording"}
+
               </p>
 
               <p className="mt-2 text-xs text-white/30">
-                MP3, WAV, M4A or other supported
-                audio formats
+
+                Tap here to choose an audio file
+                from your phone.
+
+              </p>
+
+              <p className="mt-2 text-xs text-purple-300/60">
+
+                MP3 • WAV • M4A • WEBM
+
               </p>
 
               <input
@@ -521,14 +639,9 @@ export default function Home() {
                 className="hidden"
                 onChange={(e) => {
 
-                  const file =
-                    e.target.files?.[0];
-
-                  if (file) {
-                    setVoiceFile(
-                      file
-                    );
-                  }
+                  handleVoiceFile(
+                    e.target.files?.[0]
+                  );
 
                 }}
               />
@@ -536,16 +649,69 @@ export default function Home() {
             </label>
 
 
-            {/* CREATE */}
+            {/* SELECTED FILE */}
+
+            {voiceFile && (
+
+              <div className="mt-4 rounded-xl border border-green-500/20 bg-green-500/5 p-4">
+
+                <div className="flex items-center justify-between gap-3">
+
+                  <div className="min-w-0">
+
+                    <p className="text-xs text-green-400">
+                      AUDIO READY
+                    </p>
+
+                    <p className="mt-1 truncate text-sm font-bold">
+                      {voiceFile.name}
+                    </p>
+
+                    <p className="mt-1 text-xs text-white/30">
+
+                      {(
+                        voiceFile.size /
+                        1024 /
+                        1024
+                      ).toFixed(2)}{" "}
+                      MB
+
+                    </p>
+
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVoiceFile(
+                        null
+                      )
+                    }
+                    className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-400"
+                  >
+                    REMOVE
+                  </button>
+
+                </div>
+
+              </div>
+
+            )}
+
+
+            {/* CREATE BUTTON */}
 
             <button
+              type="button"
               onClick={
                 cloneVoice
               }
               disabled={
-                cloning
+                cloning ||
+                !voiceFile ||
+                !voiceName.trim()
               }
-              className="mt-5 w-full rounded-xl bg-gradient-to-r from-red-500 via-purple-600 to-green-500 px-5 py-4 text-sm font-black disabled:opacity-50"
+              className="mt-5 w-full rounded-xl bg-gradient-to-r from-red-500 via-purple-600 to-green-500 px-5 py-4 text-sm font-black disabled:cursor-not-allowed disabled:opacity-40"
             >
 
               {cloning
@@ -554,6 +720,18 @@ export default function Home() {
 
             </button>
 
+
+            {cloning && (
+
+              <p className="mt-3 text-center text-xs text-white/40">
+
+                Uploading your recording and
+                creating your voice. Please wait...
+
+              </p>
+
+            )}
+
           </div>
 
         )}
@@ -561,20 +739,40 @@ export default function Home() {
       </section>
 
 
-      {/* MAIN */}
+      {/* MAIN STUDIO */}
 
       <section className="mx-auto max-w-7xl px-5 pb-16">
 
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
 
 
-          {/* EDITOR */}
+          {/* TEXT EDITOR */}
 
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
 
-            <h3 className="text-xl font-bold">
-              Text to Voice
-            </h3>
+            <div className="mb-5 flex items-center justify-between">
+
+              <div>
+
+                <h3 className="text-xl font-bold">
+                  Text to Voice
+                </h3>
+
+                <p className="mt-1 text-sm text-white/40">
+                  Write your script and choose
+                  a voice.
+                </p>
+
+              </div>
+
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-400">
+                TTS
+              </div>
+
+            </div>
+
+
+            {/* TEXT */}
 
             <textarea
               value={text}
@@ -584,7 +782,7 @@ export default function Home() {
                 )
               }
               placeholder="Type or paste your script here..."
-              className="mt-5 min-h-[260px] w-full resize-none rounded-2xl border border-white/10 bg-black/30 p-5 leading-7 text-white outline-none focus:border-purple-500"
+              className="min-h-[280px] w-full resize-none rounded-2xl border border-white/10 bg-black/30 p-5 leading-7 text-white outline-none placeholder:text-white/20 focus:border-purple-500"
             />
 
 
@@ -594,17 +792,19 @@ export default function Home() {
 
               <div className="mt-6">
 
-                <div className="mb-3 flex justify-between">
+                <div className="mb-3 flex items-center justify-between">
 
                   <span className="font-bold">
                     My Voices
                   </span>
 
-                  <span className="text-xs text-green-400">
-                    {myVoices.length}
+                  <span className="rounded-full bg-green-500/10 px-3 py-1 text-xs text-green-400">
+                    {myVoices.length}{" "}
+                    saved
                   </span>
 
                 </div>
+
 
                 <div className="grid gap-3">
 
@@ -615,49 +815,62 @@ export default function Home() {
                         key={
                           voice.id
                         }
-                        className={`flex items-center gap-3 rounded-xl border p-3 ${
+                        className={`flex items-center gap-3 rounded-2xl border p-4 transition ${
                           selectedVoice ===
                           voice.id
                             ? "border-green-500 bg-green-500/10"
-                            : "border-white/10"
+                            : "border-white/10 bg-white/[0.02]"
                         }`}
                       >
 
                         <button
+                          type="button"
                           onClick={() =>
                             setSelectedVoice(
                               voice.id
                             )
                           }
-                          className="flex flex-1 items-center gap-3 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         >
 
-                          <span className="text-xl">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-red-500/30 via-purple-500/30 to-green-500/30">
+
                             🎤
-                          </span>
 
-                          <span>
+                          </div>
 
-                            <span className="block font-bold">
+                          <div className="min-w-0">
+
+                            <p className="truncate font-bold">
                               {voice.title}
-                            </span>
+                            </p>
 
-                            <span className="text-xs text-white/30">
+                            <p className="mt-1 text-xs text-white/30">
                               Your cloned voice
-                            </span>
+                            </p>
 
-                          </span>
+                          </div>
 
                         </button>
 
 
+                        {selectedVoice ===
+                          voice.id && (
+
+                          <span className="text-green-400">
+                            ✓
+                          </span>
+
+                        )}
+
                         <button
+                          type="button"
                           onClick={() =>
                             deleteVoice(
                               voice.id
                             )
                           }
-                          className="px-2 text-xs text-red-400"
+                          className="rounded-lg px-2 py-2 text-xs text-red-400 hover:bg-red-500/10"
                         >
                           DELETE
                         </button>
@@ -674,17 +887,158 @@ export default function Home() {
             )}
 
 
+            {/* FISH VOICE LIBRARY */}
+
+            <div className="mt-6">
+
+              <div className="mb-3 flex items-center justify-between">
+
+                <span className="font-bold">
+                  Voice Library
+                </span>
+
+                <span className="text-xs text-white/30">
+                  {voices.length} voices
+                </span>
+
+              </div>
+
+
+              {loadingVoices ? (
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-center text-sm text-white/40">
+                  Loading voices...
+                </div>
+
+              ) : voices.length === 0 ? (
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-center text-sm text-white/40">
+                  No voices found.
+                </div>
+
+              ) : (
+
+                <div className="grid max-h-[420px] gap-3 overflow-y-auto pr-1">
+
+                  {voices.map(
+                    (voice) => (
+
+                      <button
+                        type="button"
+                        key={
+                          voice._id
+                        }
+                        onClick={() =>
+                          setSelectedVoice(
+                            voice._id
+                          )
+                        }
+                        className={`flex items-center gap-4 rounded-2xl border p-4 text-left transition ${
+                          selectedVoice ===
+                          voice._id
+                            ? "border-purple-500 bg-purple-500/10"
+                            : "border-white/10 bg-white/[0.02] hover:border-white/30"
+                        }`}
+                      >
+
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-gradient-to-br from-red-500/30 via-purple-500/30 to-green-500/30">
+
+                          {voice.cover_image ? (
+
+                            <img
+                              src={
+                                voice.cover_image
+                              }
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+
+                          ) : (
+
+                            <span>
+                              🎙️
+                            </span>
+
+                          )}
+
+                        </div>
+
+
+                        <div className="min-w-0 flex-1">
+
+                          <div className="flex items-center justify-between gap-2">
+
+                            <span className="truncate font-bold">
+                              {voice.title ||
+                                "Unnamed Voice"}
+                            </span>
+
+                            {selectedVoice ===
+                              voice._id && (
+
+                              <span className="text-green-400">
+                                ✓
+                              </span>
+
+                            )}
+
+                          </div>
+
+                          <p className="mt-1 truncate text-xs text-white/40">
+
+                            {voice.author
+                              ?.nickname ||
+                              "Fish Audio"}
+
+                          </p>
+
+                          {voice.languages &&
+                            voice.languages
+                              .length >
+                              0 && (
+
+                            <p className="mt-1 text-[10px] uppercase tracking-wider text-purple-300/60">
+
+                              {voice.languages
+                                .slice(
+                                  0,
+                                  3
+                                )
+                                .join(
+                                  " • "
+                                )}
+
+                            </p>
+
+                          )}
+
+                        </div>
+
+                      </button>
+
+                    )
+                  )}
+
+                </div>
+
+              )}
+
+            </div>
+
+
             {/* GENERATE */}
 
             <button
+              type="button"
               onClick={
                 generateVoice
               }
               disabled={
                 loading ||
-                loadingVoices
+                loadingVoices ||
+                !selectedVoice
               }
-              className="mt-6 w-full rounded-xl bg-gradient-to-r from-red-500 via-purple-600 to-green-500 px-6 py-4 text-sm font-black disabled:opacity-50"
+              className="mt-6 w-full rounded-xl bg-gradient-to-r from-red-500 via-purple-600 to-green-500 px-6 py-4 text-sm font-black transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-40"
             >
 
               {loading
@@ -694,25 +1048,14 @@ export default function Home() {
             </button>
 
 
-            {/* ERROR */}
-
-            {error && (
-
-              <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-                {error}
-              </div>
-
-            )}
-
-
-            {/* AUDIO */}
+            {/* AUDIO RESULT */}
 
             {audioUrl && (
 
               <div className="mt-6 rounded-2xl border border-green-400/20 bg-green-400/5 p-5">
 
                 <p className="mb-3 font-bold text-green-400">
-                  YOUR AUDIO IS READY
+                  ✓ YOUR AUDIO IS READY
                 </p>
 
                 <audio
@@ -740,7 +1083,7 @@ export default function Home() {
           </div>
 
 
-          {/* TOOLS */}
+          {/* CREATOR TOOLS */}
 
           <aside className="space-y-4">
 
@@ -781,14 +1124,22 @@ export default function Home() {
       </section>
 
 
+      {/* FOOTER */}
+
       <footer className="border-t border-white/10 px-5 py-8 text-center text-xs text-white/30">
+
         G-Chat Voice Max © 2026
+
       </footer>
 
     </main>
   );
 }
 
+
+/*
+ * TOOL CARD
+ */
 
 function ToolCard({
   title,
@@ -825,7 +1176,10 @@ function ToolCard({
         {description}
       </p>
 
-      <button className="mt-4 text-xs font-bold text-white/60">
+      <button
+        type="button"
+        className="mt-4 text-xs font-bold text-white/60"
+      >
         COMING SOON →
       </button>
 
