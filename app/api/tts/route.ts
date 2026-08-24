@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-
     const text = body?.text;
 
     if (!text || typeof text !== "string") {
@@ -34,11 +33,18 @@ export async function POST(request: NextRequest) {
       "https://api.fish.audio/v1/tts",
       {
         method: "POST",
+
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+
+          // IMPORTANT:
+          // Use Fish Audio's free S2.1 Pro developer model.
+          model: "s2.1-pro-free",
+
           Accept: "audio/mpeg",
         },
+
         body: JSON.stringify({
           text: text,
           format: "mp3",
@@ -48,6 +54,8 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
+
+      console.error("Fish Audio error:", errorText);
 
       return NextResponse.json(
         {
@@ -65,10 +73,13 @@ export async function POST(request: NextRequest) {
 
     return new NextResponse(audioBuffer, {
       status: 200,
+
       headers: {
         "Content-Type": "audio/mpeg",
+
         "Content-Disposition":
           'attachment; filename="g-chat-voice-max.mp3"',
+
         "Cache-Control": "no-store",
       },
     });
