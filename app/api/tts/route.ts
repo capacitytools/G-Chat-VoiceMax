@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
     const text = body?.text;
+    const voice = body?.voice || "default";
 
     if (!text || typeof text !== "string") {
       return NextResponse.json(
@@ -29,6 +31,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    /*
+     * We receive the selected voice here.
+     *
+     * The actual Fish Audio voice/reference IDs will be connected
+     * when we build the Voice Library.
+     */
+
+    console.log("Selected voice:", voice);
+
     const response = await fetch(
       "https://api.fish.audio/v1/tts",
       {
@@ -38,15 +49,13 @@ export async function POST(request: NextRequest) {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
 
-          // IMPORTANT:
-          // Use Fish Audio's free S2.1 Pro developer model.
           model: "s2.1-pro-free",
 
           Accept: "audio/mpeg",
         },
 
         body: JSON.stringify({
-          text: text,
+          text,
           format: "mp3",
         }),
       }
@@ -55,13 +64,16 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text();
 
-      console.error("Fish Audio error:", errorText);
+      console.error(
+        "Fish Audio error:",
+        errorText
+      );
 
       return NextResponse.json(
         {
           error:
             errorText ||
-            "Fish Audio failed to generate the audio.",
+            "Fish Audio failed to generate audio.",
         },
         {
           status: response.status,
@@ -69,7 +81,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const audioBuffer = await response.arrayBuffer();
+    const audioBuffer =
+      await response.arrayBuffer();
 
     return new NextResponse(audioBuffer, {
       status: 200,
@@ -83,12 +96,18 @@ export async function POST(request: NextRequest) {
         "Cache-Control": "no-store",
       },
     });
+
   } catch (error) {
-    console.error("TTS ERROR:", error);
+
+    console.error(
+      "TTS ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
-        error: "Unable to generate audio.",
+        error:
+          "Unable to generate audio.",
       },
       {
         status: 500,
