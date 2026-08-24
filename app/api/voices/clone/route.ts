@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("================================");
+    console.log("G-CHAT VOICE CLONE START");
+    console.log("================================");
+
     const apiKey = process.env.FISH_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "FISH_API_KEY is missing in Vercel." },
+        {
+          success: false,
+          error:
+            "FISH_API_KEY is missing. Check Vercel Environment Variables.",
+        },
         { status: 500 }
       );
     }
@@ -16,44 +24,75 @@ export async function POST(request: NextRequest) {
     const audio = formData.get("audio");
     const title = formData.get("title");
 
+    console.log("TITLE:", title);
+    console.log("AUDIO:", audio);
+
     if (!(audio instanceof File)) {
       return NextResponse.json(
-        { error: "No audio file was received." },
+        {
+          success: false,
+          error: "No audio file reached the server.",
+        },
         { status: 400 }
       );
     }
 
     if (!title || typeof title !== "string") {
       return NextResponse.json(
-        { error: "Please enter a voice name." },
+        {
+          success: false,
+          error: "Voice name was not received.",
+        },
         { status: 400 }
       );
     }
 
-    if (audio.size === 0) {
+    console.log("FILE NAME:", audio.name);
+    console.log("FILE TYPE:", audio.type);
+    console.log("FILE SIZE:", audio.size);
+
+    if (audio.size <= 0) {
       return NextResponse.json(
-        { error: "The audio file is empty." },
+        {
+          success: false,
+          error: "The uploaded audio file is empty.",
+        },
         { status: 400 }
       );
     }
 
-    console.log("VOICE CLONE START");
-    console.log("File:", audio.name);
-    console.log("Type:", audio.type);
-    console.log("Size:", audio.size);
-    console.log("Title:", title);
+    /*
+     * SEND FILE TO FISH AUDIO
+     */
 
     const fishForm = new FormData();
 
-    fishForm.append("voices", audio, audio.name);
-    fishForm.append("title", title);
+    fishForm.append(
+      "voices",
+      audio,
+      audio.name
+    );
+
+    fishForm.append(
+      "title",
+      title
+    );
+
     fishForm.append(
       "description",
       "Voice created with G-Chat Voice Max"
     );
-    fishForm.append("visibility", "private");
 
-    const response = await fetch(
+    fishForm.append(
+      "visibility",
+      "private"
+    );
+
+    console.log(
+      "Sending request to Fish Audio..."
+    );
+
+    const fishResponse = await fetch(
       "https://api.fish.audio/model",
       {
         method: "POST",
@@ -66,93 +105,81 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    const responseText = await response.text();
+    const fishText =
+      await fishResponse.text();
 
     console.log(
       "FISH STATUS:",
-      response.status
+      fishResponse.status
     );
 
     console.log(
       "FISH RESPONSE:",
-      responseText
+      fishText
     );
 
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          error:
-            responseText ||
-            `Fish Audio returned ${response.status}`,
+    /*
+     * RETURN FISH RESPONSE DIRECTLY
+     *
+     * This is temporary.
+     * We are doing this so we can see
+     * exactly what Fish Audio is returning.
+     */
+
+    return NextResponse.json(
+      {
+        success:
+          fishResponse.ok,
+
+        fishStatus:
+          fishResponse.status,
+
+        fishResponse:
+          fishText,
+
+        file: {
+          name: audio.name,
+          type: audio.type,
+          size: audio.size,
         },
-        {
-          status: response.status,
-        }
-      );
-    }
 
-    let data;
-
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      return NextResponse.json(
-        {
-          error:
-            "Fish Audio returned an invalid response.",
-          raw: responseText,
-        },
-        {
-          status: 502,
-        }
-      );
-    }
-
-    const voiceId =
-      data._id ||
-      data.id ||
-      data.model_id;
-
-    if (!voiceId) {
-      return NextResponse.json(
-        {
-          error:
-            "Fish Audio created a response, but no voice ID was returned.",
-          response: data,
-        },
-        {
-          status: 502,
-        }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-
-      voice: {
-        id: voiceId,
-        title:
-          data.title || title,
-        description:
-          data.description ||
-          "Voice created with G-Chat Voice Max",
-        createdAt:
-          new Date().toISOString(),
+        message:
+          fishResponse.ok
+            ? "Fish Audio accepted the request."
+            : "Fish Audio rejected the request.",
       },
-    });
+      {
+        status: fishResponse.ok
+          ? 200
+          : 502,
+      }
+    );
 
   } catch (error) {
+
     console.error(
-      "VOICE CLONE CRASH:",
-      error
+      "================================"
+    );
+
+    console.error(
+      "G-CHAT CLONE ERROR"
+    );
+
+    console.error(error);
+
+    console.error(
+      "================================"
     );
 
     return NextResponse.json(
       {
+        success: false,
+
         error:
           error instanceof Error
             ? error.message
-            : "Voice cloning failed.",
+            : "Unknown server error.",
+
       },
       {
         status: 500,
