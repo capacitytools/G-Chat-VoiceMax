@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const text = body?.text;
-    const voice = body?.voice || "default";
+    const referenceId = body?.reference_id;
 
     if (!text || typeof text !== "string") {
       return NextResponse.json(
@@ -23,7 +23,8 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json(
         {
-          error: "Fish Audio API key is not configured.",
+          error:
+            "Fish Audio API key is not configured.",
         },
         {
           status: 500,
@@ -31,14 +32,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /*
-     * We receive the selected voice here.
-     *
-     * The actual Fish Audio voice/reference IDs will be connected
-     * when we build the Voice Library.
-     */
+    const requestBody: {
+      text: string;
+      format: string;
+      reference_id?: string;
+    } = {
+      text,
+      format: "mp3",
+    };
 
-    console.log("Selected voice:", voice);
+    if (referenceId) {
+      requestBody.reference_id =
+        referenceId;
+    }
 
     const response = await fetch(
       "https://api.fish.audio/v1/tts",
@@ -47,22 +53,23 @@ export async function POST(request: NextRequest) {
 
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
 
           model: "s2.1-pro-free",
 
           Accept: "audio/mpeg",
         },
 
-        body: JSON.stringify({
-          text,
-          format: "mp3",
-        }),
+        body: JSON.stringify(
+          requestBody
+        ),
       }
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText =
+        await response.text();
 
       console.error(
         "Fish Audio error:",
@@ -84,18 +91,23 @@ export async function POST(request: NextRequest) {
     const audioBuffer =
       await response.arrayBuffer();
 
-    return new NextResponse(audioBuffer, {
-      status: 200,
+    return new NextResponse(
+      audioBuffer,
+      {
+        status: 200,
 
-      headers: {
-        "Content-Type": "audio/mpeg",
+        headers: {
+          "Content-Type":
+            "audio/mpeg",
 
-        "Content-Disposition":
-          'attachment; filename="g-chat-voice-max.mp3"',
+          "Content-Disposition":
+            'attachment; filename="g-chat-voice-max.mp3"',
 
-        "Cache-Control": "no-store",
-      },
-    });
+          "Cache-Control":
+            "no-store",
+        },
+      }
+    );
 
   } catch (error) {
 
